@@ -1,70 +1,88 @@
 package influxdb_test
 
 import (
-	"fmt"
+	"encoding/json"
+	"net/http"
+	"net/url"
+	"testing"
 	"time"
 
-	"github.com/eneoti/dockertest"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"net/http/httptest"
+
+	influxClient "github.com/influxdata/influxdb1-client"
 	"github.com/onskycloud/influxdb"
 )
 
-var container *dockertest.Container
-var client *influxdb.Client
-var addr string
-var _ = BeforeSuite(func() {
-	container, _ = dockertest.RunContainer("influxdb:alpine", "influx-test", "6379", func(result string) error {
-		addr = result
+func TestContainer(t *testing.T) {
+	ts := testServer()
+	defer ts.Close()
+
+	u, _ := url.Parse(ts.URL)
+	config := &influxdb.Config{URL: *u}
+	query := &influxdb.Query{}
+	bps := &influxdb.BatchPoints{}
+
+	influx := testNewClient(t, config)
+	if influx != nil {
+
+		testClient_Ping(t, influx)
+		testClient_Query(t, influx, query)
+		testClient_Write(t, influx, bps)
+	}
+
+}
+func testNewClient(t *testing.T, config *influxdb.Config) *influxdb.Influx {
+	con, err := influxdb.NewClient(config)
+	if err != nil {
+		t.Fatalf("unexpected error.  expected %v, actual %v", nil, err)
 		return nil
-	})
-	time.Sleep(time.Millisecond * 1500)
-})
+	}
+	if con == nil {
+		t.Fatalf("unexpected error.  expected %s, actual %v", "client.Client", nil)
+		return nil
+	}
+	return con
+}
+func testClient_Ping(t *testing.T, client *influxdb.Influx) {
+	d, version, err := client.Ping()
+	if err != nil {
+		t.Fatalf("unexpected error.  expected %v, actual %v", nil, err)
+	}
+	if d.Nanoseconds() == 0 {
+		t.Fatalf("expected a duration greater than zero.  actual %v", d.Nanoseconds())
+	}
+	if version != "x.x" {
+		t.Fatalf("unexpected version.  expected %s,  actual %v", "x.x", version)
+	}
+}
+func testClient_Query(t *testing.T, client *influxdb.Influx, query *influxdb.Query) {
+	result, err := client.Query(query)
+	if err != nil {
+		t.Fatalf("unexpected error.  expected %v, actual %v", result, err)
+	}
+	if result == nil {
+		t.Fatalf("unexpected result.  expected %s,  actual %v", "result", nil)
+	}
+}
+func testClient_Write(t *testing.T, client *influxdb.Influx, bps *influxdb.BatchPoints) {
+	result, err := client.Write(bps)
+	if err != nil {
+		t.Fatalf("unexpected error.  expected %v, actual %v", nil, err)
+	}
+	if result == nil {
+		t.Fatalf("unexpected result.  expected %s,  actual %v", "result", nil)
+	}
+}
 
-var _ = AfterSuite(func() {
-	container.Shutdown("influx-test")
-	client.Close()
-})
+// helper functions
 
-var _ = Describe("Influx", func() {
-	It("Init influx client should receive onconnect event", func() {
-		fmt.Printf("addr:%+v\n", addr)
-		options := struct {
-			Addr *string
-		}{
-			Addr: &addr,
-		}
-		client = influxdb.NewClient()
-		Expect(client.Ping().Err()).NotTo(HaveOccurred())
-	})
-	It("Set should have no error ", func() {
-		_, err := client.Set("test_key", "hello", 0)
-		Expect(err).NotTo(HaveOccurred())
-	})
-	It("Set should receive same with set", func() {
-		result, err := client.Get("test_key")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(result).To(Equal("hello"))
-	})
-	It("Del should have no err", func() {
-		err := client.Del("test_key")
-		Expect(err).NotTo(HaveOccurred())
-	})
-	It("SetObject should have no error ", func() {
-		type Temp struct {
-			Name  string
-			Value string
-		}
-		value := &Temp{Name: "thing1", Value: "hello"}
-		_, err := client.SetObject("things", "hello", value)
-		Expect(err).NotTo(HaveOccurred())
-	})
-	It("GetObject should have no error ", func() {
-		result := make(map[string]interface{})
-		err := client.GetObject("things", "hello", &result)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(result["Name"]).To(Equal("thing1"))
-		err = client.Del("things")
-		Expect(err).NotTo(HaveOccurred())
-	})
-})
+func testServer() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var data influxClient.Response
+		time.Sleep(50 * time.Millisecond)
+
+		w.Header().Set("X-Influxdb-Version", "x.x")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(data)
+	}))
+}

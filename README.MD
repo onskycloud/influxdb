@@ -1,65 +1,73 @@
-# Struct Helper
+# Influxdb CLient
 
-[![N|Solid](https://cldup.com/dTxpPi9lDf.thumb.png)](https://github.com/nguyencatpham/request-handler)
+[![N|Solid](https://cldup.com/dTxpPi9lDf.thumb.png)](https://github.com/onskycloud/influxdb)
 
-[![Build Status](https://travis-ci.org/joemccann/dillinger.svg?branch=master)](https://github.com/nguyencatpham/request-handler)
+[![Build Status](https://travis-ci.org/joemccann/dillinger.svg?branch=master)](https://github.com/onskycloud/influxdb)
 
 Merge two different structs, and overwrite fields
 
 ## What is this
 
-To make creating struct for tests easier.
+influxdb client
 
 ## Getting Started!
+> model
+```
+// Query is used to send a command to the server. Both Command and Database are required.
+type Query struct {
+	Command  string
+	Database string
 
-  ```
-    to := testStruct{
-		String:  "default string",
-		Bool:    true,
-		Integer: 100,
-		Float:   float64(1.001112),
-		Time:    time.Now(),
-		LargeNum: testSubStruct{
-			IntPart: 1000,
-			IsZero:  false,
-		},
-		Decimal: decimal.NewFromFloat(1000),
-	}
-	from := otherStruct{
-		String: "another string",
-	}
-	var target testStruct
-	if err := MergeOverwrite(to, from, &target); err != nil {
-		t.Fatal(err)
-	}
-  ```
-### Other function
+	// RetentionPolicy tells the server which retention policy to use by default.
+	// This option is only effective when querying a server of version 1.6.0 or later.
+	RetentionPolicy string
 
-#### Merge
-> Merge receives two structs, and merges them excluding fields with tag name: `structs`, value "-"
+	// Chunked tells the server to send back chunked responses. This places
+	// less load on the server by sending back chunks of the response rather
+	// than waiting for the entire response all at once.
+	Chunked bool
+
+	// ChunkSize sets the maximum number of rows that will be returned per
+	// chunk. Chunks are either divided based on their series or if they hit
+	// the chunk size limit.
+	//
+	// Chunked must be set to true for this option to be used.
+	ChunkSize int
+
+	// NodeID sets the data node to use for the query results. This option only
+	// has any effect in the enterprise version of the software where there can be
+	// more than one data node and is primarily useful for analyzing differences in
+	// data. The default behavior is to automatically select the appropriate data
+	// nodes to retrieve all of the data. On a database where the number of data nodes
+	// is greater than the replication factor, it is expected that setting this option
+	// will only retrieve partial data.
+	NodeID int
+}
+
+// BatchPoints is used to send batched data in a single write.
+// Database and Points are required
+// If no retention policy is specified, it will use the databases default retention policy.
+// If tags are specified, they will be "merged" with all points. If a point already has that tag, it will be ignored.
+// If time is specified, it will be applied to any point with an empty time.
+// Precision can be specified if the time is in epoch format (integer).
+// Valid values for Precision are n, u, ms, s, m, and h
+type BatchPoints struct {
+	Points           []client.Point    `json:"points,omitempty"`
+	Database         string            `json:"database,omitempty"`
+	RetentionPolicy  string            `json:"retentionPolicy,omitempty"`
+	Tags             map[string]string `json:"tags,omitempty"`
+	Time             time.Time         `json:"time,omitempty"`
+	Precision        string            `json:"precision,omitempty"`
+	WriteConsistency string            `json:"-"`
+}
 ```
-Merge(dst, src interface{})
-```
-#### MergeOverwrite
-> Merge 2 structs overwriten
-```
-MergeOverwrite(to, from, dst interface{})
-```
-#### MergeOverwriteCamel (not stable)
-> Merge 2 structs overwriten supported cammel case
-```
-MergeOverwriteCamel(to, from, dst interface{})
-```
-#### MergeToMap
-> Merge 2 structs to map
-```
-MergeToMap(to, from interface{}) (map[string]interface{}, error)
-```
-#### ConvertStringToMap
-> Convert string json to map
-```
-ConvertStringToMap(in string) map[string]interface{}
-```
+> How to use
+  ```
+   con, err := influxdb.NewClient(config)
+   con.Query(query)
+   con.Write(batchPoints)
+  ```
+
 
 ### Installation
 
@@ -68,7 +76,7 @@ Request handler requires [Go](https://golang.org/) v1.11+ to run.
 Install the package.
 
 ```sh
-$ go get github.com/onskycloud/structs
+$ go get github.com/onskycloud/influxdb
 ```
 
 #### Kubernetes + Google Cloud
